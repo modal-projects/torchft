@@ -49,13 +49,15 @@ class HTTPTransport(CheckpointTransport[T]):
         num_chunks: the number of chunks to split the checkpoint into (0 for no chunking)
     """
 
-    def __init__(self, timeout: timedelta, num_chunks: int) -> None:
+    def __init__(self, timeout: timedelta, num_chunks: int, hostname: Optional[str] = None, port: int = 0) -> None:
         self._checkpoint_lock = RWLock(timeout=timeout.total_seconds())
         self._disallowed = False
         self._step = -1
         self._timeout = timeout
         self._state_dict: Optional[T] = None
         self._num_chunks = num_chunks
+        self._hostname = hostname  # Custom hostname for checkpoint server
+        self._port = port  # Custom port for checkpoint server (0 for random)
         self._stream: Optional[torch.cuda.Stream] = (
             torch.cuda.Stream() if torch.cuda.is_available() else None
         )
@@ -130,7 +132,7 @@ class HTTPTransport(CheckpointTransport[T]):
                     )
                     self.send_error(500, str(e))
 
-        server_address = ("", 0)
+        server_address = ("", self._port)  # Use the specified port (0 for random)
         self._server = _IPv6HTTPServer(server_address, RequestHandler)
         logger.info(f"Started CheckpointServer on {self.address()}...")
 
@@ -171,7 +173,9 @@ class HTTPTransport(CheckpointTransport[T]):
             an HTTP address
         """
         port = self._server.socket.getsockname()[1]
-        return f"http://{socket.gethostname()}:{port}/checkpoint/"
+        # Use custom hostname if provided, otherwise fall back to socket.gethostname()
+        hostname = self._hostname if self._hostname else socket.gethostname()
+        return f"http://{hostname}:{port}/checkpoint/"
 
     def _serve(self) -> None:
         try:

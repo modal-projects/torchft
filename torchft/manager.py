@@ -274,9 +274,21 @@ class Manager:
         )
         self._quorum_future: Optional[concurrent.futures.Future] = None
 
+        # For rank 0 (which runs ManagerServer), the TCPStore server is in the same container
+        # so we connect to localhost. The actual TCPStore server port needs to be discovered.
+        # Since we control both the worker and manager setup, we'll use an environment variable.
+        if self._group_rank == 0:
+            # Get the actual internal port the TCPStore server is listening on
+            internal_store_port = int(os.environ.get("TORCHFT_STORE_PORT", "34251"))
+            internal_store_addr = "localhost"
+        else:
+            # Other ranks use the advertised store address
+            internal_store_addr = store_addr
+            internal_store_port = store_port if isinstance(store_port, int) else int(store_port)
+        
         self._store = TCPStore(
-            host_name=store_addr,
-            port=store_port,
+            host_name=internal_store_addr,
+            port=internal_store_port,
             is_master=False,
             wait_for_workers=False,
         )
@@ -320,6 +332,14 @@ class Manager:
             self._store.set(REPLICA_ID_KEY, replica_id)
 
         addr = self._store.get(MANAGER_ADDR_KEY).decode("utf-8")
+        
+        # If we're rank 0, connect to localhost instead of the external address
+        # since we're connecting to our own ManagerServer
+        if self._group_rank == 0:
+            # Parse the port from the address (format: http://hostname:port)
+            port = addr.split(':')[-1]
+            addr = f"http://localhost:{port}"
+        
         self._client = ManagerClient(addr, connect_timeout=connect_timeout)
 
         replica_id = self._store.get(REPLICA_ID_KEY).decode("utf-8")
