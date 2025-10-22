@@ -65,6 +65,16 @@ first_party_detection = false
 [tool.ufmt]
 formatter = "ruff-api"
 
+[tool.ruff]
+exclude = [".venv", "venv", "__pycache__"]
+line-length = 88
+# TODO: Add when available: "E266", "E203"
+lint.ignore = ["E501", "E741", "E402"]
+lint.select = ['E', 'F', 'W', 'I']
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+
 [tool.pytest.ini_options]
 log_format = "%(asctime)s %(levelname)s %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"

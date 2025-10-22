@@ -13,10 +13,10 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler
-from typing import cast, Generator, List, Optional, TypeVar
+from typing import Generator, List, Optional, TypeVar, cast
 
 import torch
-from torch.utils._pytree import tree_flatten, tree_unflatten, TreeSpec
+from torch.utils._pytree import TreeSpec, tree_flatten, tree_unflatten
 
 from torchft.checkpointing._rwlock import RWLock
 from torchft.checkpointing._serialization import _streaming_load, _streaming_save
@@ -49,15 +49,23 @@ class HTTPTransport(CheckpointTransport[T]):
         num_chunks: the number of chunks to split the checkpoint into (0 for no chunking)
     """
 
-    def __init__(self, timeout: timedelta, num_chunks: int, hostname: Optional[str] = None, port: int = 0) -> None:
+    def __init__(self,
+        timeout: timedelta,
+        num_chunks: int,
+        discovery_hostname: Optional[str] = None,
+        discovery_port: int = 0,
+        bind_port: int = 0
+    ) -> None:
+
         self._checkpoint_lock = RWLock(timeout=timeout.total_seconds())
         self._disallowed = False
         self._step = -1
         self._timeout = timeout
         self._state_dict: Optional[T] = None
         self._num_chunks = num_chunks
-        self._hostname = hostname  # Custom hostname for checkpoint server
-        self._port = port  # Custom port for checkpoint server (0 for random)
+        self._discovery_hostname = discovery_hostname  # Custom hostname for checkpoint server
+        self._discovery_port = discovery_port  # Custom port for checkpoint server (0 for random)
+        self._bind_port = bind_port
         self._stream: Optional[torch.cuda.Stream] = (
             torch.cuda.Stream() if torch.cuda.is_available() else None
         )
@@ -132,7 +140,7 @@ class HTTPTransport(CheckpointTransport[T]):
                     )
                     self.send_error(500, str(e))
 
-        server_address = ("", self._port)  # Use the specified port (0 for random)
+        server_address = ("", self._bind_port)  # Use the specified port (0 for random)
         self._server = _IPv6HTTPServer(server_address, RequestHandler)
         logger.info(f"Started CheckpointServer on {self.address()}...")
 
@@ -172,15 +180,16 @@ class HTTPTransport(CheckpointTransport[T]):
         Returns:
             an HTTP address
         """
-        port = self._server.socket.getsockname()[1]
+        # port = self._server.socket.getsockname()[1]
         # Use custom hostname if provided, otherwise fall back to socket.gethostname()
-        hostname = self._hostname if self._hostname else socket.gethostname()
-        return f"http://{hostname}:{port}/checkpoint/"
+        discovery_hostname = self._discovery_hostname if self._discovery_hostname else socket.gethostname()
+        discovery_port = self._discovery_port if self._discovery_port else self._bind_port
+        return f"http://{discovery_hostname}:{discovery_port}/checkpoint/"
 
     def _serve(self) -> None:
         try:
             self._server.serve_forever()
-        except Exception as e:
+        except Exception:
             logger.exception("got exception in checkpoint server")
 
     def disallow_checkpoint(self) -> None:
