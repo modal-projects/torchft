@@ -166,6 +166,7 @@ class Manager:
         lighthouse_addr: Optional[str] = None,
         replica_id: Optional[str] = None,
         port: Optional[int] = None,
+        discovery_port: Optional[int] = None,
         hostname: str = socket.gethostname(),
         heartbeat_interval: timedelta = timedelta(milliseconds=100),
         checkpoint_transport: Optional[CheckpointTransport[Dict[str, T]]] = None,
@@ -183,6 +184,7 @@ class Manager:
                 1. this argument
                 2. TORCHFT_MANAGER_PORT env var
                 3. arbitrary port assigned via 0
+            discovery_port: if rank==0, the external port to advertise (e.g., tunnel port)
             use_async_quorum: whether to run the quorum asynchronously during the forward pass
             timeout: the default timeout for all operations
                 Included:
@@ -302,10 +304,14 @@ class Manager:
         # Used to synchronize recovery operation
         self._recovery_event: Optional[torch.Event] = None
 
+        # Store the actual bind port for rank 0 localhost connection
+        self._manager_bind_port: Optional[int] = None
+
         if self._group_rank == 0:
             if port is None:
                 port = int(os.environ.get(MANAGER_PORT_ENV, 0))
-
+            
+            self._manager_bind_port = port
             bind = f"[::]:{port}"
             lighthouse_addr = lighthouse_addr or os.environ["TORCHFT_LIGHTHOUSE"]
 
@@ -316,10 +322,18 @@ class Manager:
                 replica_id = new_uuid
             else:
                 replica_id = f"{replica_id}:{new_uuid}"
+            # discovery_port must be provided for environments with port forwarding/tunneling
+            if discovery_port is None:
+                if port == 0 or port is None:
+                    raise ValueError("discovery_port must be provided when using auto-assigned ports")
+                # Fall back to using the bind port (won't work with tunnels)
+                discovery_port = port
+            
             self._manager = ManagerServer(
                 replica_id=replica_id,
                 lighthouse_addr=lighthouse_addr,
                 hostname=hostname,
+                discovery_port=discovery_port,
                 bind=bind,
                 store_addr=f"{store_addr}:{store_port}",
                 world_size=group_world_size,
@@ -336,9 +350,12 @@ class Manager:
         # If we're rank 0, connect to localhost instead of the external address
         # since we're connecting to our own ManagerServer
         if self._group_rank == 0:
-            # Parse the port from the address (format: http://hostname:port)
-            port = addr.split(':')[-1]
-            addr = f"http://localhost:{port}"
+            # Use the actual bind port for localhost connection, not discovery port
+            # The bind port is what the server is actually listening on locally
+            if self._manager_bind_port == 0:
+                # If port was auto-assigned, we can't get the actual port easily
+                raise ValueError("Cannot use auto-assigned ports (port=0) with discovery_port")
+            addr = f"http://localhost:{self._manager_bind_port}"
         
         self._client = ManagerClient(addr, connect_timeout=connect_timeout)
 

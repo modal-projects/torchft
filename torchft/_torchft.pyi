@@ -43,6 +43,7 @@ class ManagerServer:
         replica_id: str,
         lighthouse_addr: str,
         hostname: str,
+        discovery_port: int,
         bind: str,
         store_addr: str,
         world_size: int,

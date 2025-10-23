@@ -71,6 +71,7 @@ fn num_threads() -> usize {
 ///     replica_id (str): The ID of the replica group.
 ///     lighthouse_addr (str): The HTTP address of the lighthouse server.
 ///     hostname (str): The hostname of the manager server.
+///     discovery_port (int): The external port to advertise (e.g., tunnel port).
 ///     bind (str): The HTTP address to bind the server to.
 ///     store_addr (str): The HTTP address of the store server.
 ///     world_size (int): The world size of the replica group.
@@ -92,6 +93,7 @@ impl ManagerServer {
         replica_id: String,
         lighthouse_addr: String,
         hostname: String,
+        discovery_port: u16,
         bind: String,
         store_addr: String,
         world_size: u64,
@@ -110,6 +112,7 @@ impl ManagerServer {
                     replica_id,
                     lighthouse_addr,
                     hostname,
+                    discovery_port,
                     bind,
                     store_addr,
                     world_size,
