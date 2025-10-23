@@ -80,6 +80,7 @@ struct ManagerState {
 pub struct Manager {
     replica_id: String,
     hostname: String,
+    discovery_port: u16,
     store_address: String,
     world_size: u64,
     state: Mutex<ManagerState>,
@@ -120,6 +121,7 @@ impl Manager {
         replica_id: String,
         lighthouse_addr: String,
         hostname: String,
+        discovery_port: u16,
         bind: String,
         store_addr: String,
         world_size: u64,
@@ -140,6 +142,7 @@ impl Manager {
             lighthouse_addr,
             connect_timeout,
             hostname,
+            discovery_port,
             store_address: store_addr,
             world_size,
             heartbeat_interval,
@@ -174,7 +177,7 @@ impl Manager {
     }
 
     pub fn address(&self) -> String {
-        format!("http://{}:{}", self.hostname, self.local_addr.port())
+        format!("http://{}:{}", self.hostname, self.discovery_port)
     }
 
     async fn _run_grpc(self: Arc<Self>) -> Result<()> {
